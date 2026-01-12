@@ -3,6 +3,9 @@ from pathlib import Path
 import sys
 import click
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from agent.agent import Agent
 from agent.events import AgentEventType
 from agent.persistence import PersistenceManager, SessionSnapshot

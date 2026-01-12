@@ -24,11 +24,14 @@ class MessageItem:
         if self.tool_call_id:
             result["tool_call_id"] = self.tool_call_id
 
-        if self.tool_calls:
+            result["content"] = self.content or ""
+        elif self.tool_calls:
             result["tool_calls"] = self.tool_calls
-
-        if self.content:
-            result["content"] = self.content
+            if self.content:
+                result["content"] = self.content
+        else:
+            if self.content:
+                result["content"] = self.content
 
         return result
 
@@ -84,11 +87,12 @@ class ContextManager:
         self._messages.append(item)
 
     def add_tool_result(self, tool_call_id: str, content: str) -> None:
+        safe_content = content or ""
         item = MessageItem(
             role="tool",
-            content=content,
+            content=safe_content,
             tool_call_id=tool_call_id,
-            token_count=count_tokens(content, self._model_name),
+            token_count=count_tokens(safe_content, self._model_name),
         )
 
         self._messages.append(item)
