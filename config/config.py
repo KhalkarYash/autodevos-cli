@@ -7,9 +7,9 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class ModelConfig(BaseModel):
-    name: str = "mistralai/devstral-2512:free"
-    temperature: float = Field(default=1, ge=0.0, le=2.0)
-    context_window: int = 256_000
+    name: str = "llama3.2"
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    context_window: int = 128_000
 
 
 class ShellEnvironmentPolicy(BaseModel):
@@ -106,12 +106,14 @@ class Config(BaseModel):
     debug: bool = False
 
     @property
-    def api_key(self) -> str | None:
-        return os.environ.get("API_KEY")
+    def api_key(self) -> str:
+        # Ollama doesn't require an API key, but OpenAI client needs one
+        return os.environ.get("API_KEY", "ollama")
 
     @property
-    def base_url(self) -> str | None:
-        return os.environ.get("BASE_URL")
+    def base_url(self) -> str:
+        # Default to local Ollama server, can be overridden for remote
+        return os.environ.get("BASE_URL", "http://localhost:11434/v1")
 
     @property
     def model_name(self) -> str:
@@ -132,8 +134,9 @@ class Config(BaseModel):
     def validate(self) -> list[str]:
         errors: list[str] = []
 
-        if not self.api_key:
-            errors.append("No API key found. Set API_KEY environment variable")
+        # API key only required for non-Ollama services
+        if self.api_key == "ollama" and "openrouter" in self.base_url.lower():
+            errors.append("API_KEY required for OpenRouter. Set API_KEY environment variable")
 
         if not self.cwd.exists():
             errors.append(f"Working directory does not exist: {self.cwd}")
