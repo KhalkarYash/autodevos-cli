@@ -6,10 +6,53 @@ from typing import Any
 from pydantic import BaseModel, Field, model_validator
 
 
+class Provider(str, Enum):
+    """Supported LLM providers."""
+    OPENAI = "openai"           # OpenAI API
+    ANTHROPIC = "anthropic"     # Anthropic Claude
+    GEMINI = "gemini"           # Google Gemini
+    OLLAMA = "ollama"           # Local Ollama
+    OPENROUTER = "openrouter"   # OpenRouter (multi-model)
+    LMSTUDIO = "lmstudio"       # LM Studio local
+    VLLM = "vllm"               # vLLM server
+    CUSTOM = "custom"           # Custom OpenAI-compatible endpoint
+
+
+# Default base URLs for each provider
+PROVIDER_BASE_URLS = {
+    Provider.OPENAI: "https://api.openai.com/v1",
+    Provider.ANTHROPIC: "https://api.anthropic.com",
+    Provider.GEMINI: "https://generativelanguage.googleapis.com/v1beta",
+    Provider.OLLAMA: "http://localhost:11434/v1",
+    Provider.OPENROUTER: "https://openrouter.ai/api/v1",
+    Provider.LMSTUDIO: "http://localhost:1234/v1",
+    Provider.VLLM: "http://localhost:8000/v1",
+}
+
+# Default models for each provider
+PROVIDER_DEFAULT_MODELS = {
+    Provider.OPENAI: "gpt-4o",
+    Provider.ANTHROPIC: "claude-sonnet-4-20250514",
+    Provider.GEMINI: "gemini-1.5-pro",
+    Provider.OLLAMA: "llama3.2",
+    Provider.OPENROUTER: "anthropic/claude-sonnet-4-20250514",
+    Provider.LMSTUDIO: "local-model",
+    Provider.VLLM: "local-model",
+}
+
+
 class ModelConfig(BaseModel):
-    name: str = "llama3.2"
-    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    provider: Provider = Provider.OLLAMA
+    name: str | None = None  # If None, uses provider default
+    temperature: float = Field(default=1.0, ge=0.0, le=2.0)
     context_window: int = 128_000
+
+    @property
+    def model_name(self) -> str:
+        """Get the model name, using provider default if not set."""
+        if self.name:
+            return self.name
+        return PROVIDER_DEFAULT_MODELS.get(self.provider, "gpt-4o")
 
 
 class ShellEnvironmentPolicy(BaseModel):
@@ -107,17 +150,31 @@ class Config(BaseModel):
 
     @property
     def api_key(self) -> str:
-        # Ollama doesn't require an API key, but OpenAI client needs one
-        return os.environ.get("API_KEY", "ollama")
+        """Get API key from environment. Returns placeholder for Ollama."""
+        key = os.environ.get("API_KEY", "")
+        if not key and self.model.provider == Provider.OLLAMA:
+            return "ollama"  # Ollama doesn't need a real key
+        return key
 
     @property
     def base_url(self) -> str:
-        # Default to local Ollama server, can be overridden for remote
-        return os.environ.get("BASE_URL", "http://localhost:11434/v1")
+        """Get base URL from environment or use provider default."""
+        url = os.environ.get("BASE_URL", "")
+        if url:
+            return url
+        return PROVIDER_BASE_URLS.get(
+            self.model.provider, 
+            "http://localhost:11434/v1"
+        )
+
+    @property
+    def provider(self) -> Provider:
+        """Convenience property to access the provider."""
+        return self.model.provider
 
     @property
     def model_name(self) -> str:
-        return self.model.name
+        return self.model.model_name
 
     @model_name.setter
     def model_name(self, value: str) -> None:
@@ -134,9 +191,19 @@ class Config(BaseModel):
     def validate(self) -> list[str]:
         errors: list[str] = []
 
-        # API key only required for non-Ollama services
-        if self.api_key == "ollama" and "openrouter" in self.base_url.lower():
-            errors.append("API_KEY required for OpenRouter. Set API_KEY environment variable")
+        # Check if API key is required for the provider
+        requires_key = self.model.provider in [
+            Provider.OPENAI,
+            Provider.ANTHROPIC,
+            Provider.GEMINI,
+            Provider.OPENROUTER,
+        ]
+        
+        if requires_key and not self.api_key:
+            errors.append(
+                f"API_KEY required for {self.model.provider.value}. "
+                "Set API_KEY environment variable"
+            )
 
         if not self.cwd.exists():
             errors.append(f"Working directory does not exist: {self.cwd}")
