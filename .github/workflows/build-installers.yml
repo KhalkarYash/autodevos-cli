@@ -1,0 +1,201 @@
+name: Build Installers
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+      
+      - name: Build executable
+        run: pyinstaller build/autodevos.spec --clean --noconfirm
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: dist/ados.exe
+
+  build-macos-intel:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller dmgbuild
+      
+      - name: Build executable
+        run: pyinstaller build/autodevos.spec --clean --noconfirm
+      
+      - name: Create DMG
+        run: |
+          mkdir -p dist/dmg
+          cp dist/ados dist/dmg/
+          hdiutil create -volname "AutoDevOS" -srcfolder dist/dmg -ov -format UDZO dist/AutoDevOS-x86_64.dmg
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-intel-dmg
+          path: dist/AutoDevOS-x86_64.dmg
+
+  build-macos-arm:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller dmgbuild
+      
+      - name: Build executable
+        run: pyinstaller build/autodevos.spec --clean --noconfirm
+      
+      - name: Create DMG
+        run: |
+          mkdir -p dist/dmg
+          cp dist/ados dist/dmg/
+          hdiutil create -volname "AutoDevOS" -srcfolder dist/dmg -ov -format UDZO dist/AutoDevOS-arm64.dmg
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm-dmg
+          path: dist/AutoDevOS-arm64.dmg
+
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+      
+      - name: Build executable
+        run: pyinstaller build/autodevos.spec --clean --noconfirm
+      
+      - name: Create AppImage
+        run: |
+          # Create AppDir
+          mkdir -p dist/AutoDevOS.AppDir/usr/bin
+          cp dist/ados dist/AutoDevOS.AppDir/usr/bin/
+          
+          # Create AppRun
+          cat > dist/AutoDevOS.AppDir/AppRun << 'EOF'
+          #!/bin/bash
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          exec "${HERE}/usr/bin/ados" "$@"
+          EOF
+          chmod +x dist/AutoDevOS.AppDir/AppRun
+          
+          # Create desktop file
+          cat > dist/AutoDevOS.AppDir/autodevos.desktop << 'EOF'
+          [Desktop Entry]
+          Name=AutoDevOS
+          Exec=ados
+          Type=Application
+          Categories=Development;
+          Terminal=true
+          EOF
+          
+          # Placeholder icon
+          touch dist/AutoDevOS.AppDir/autodevos.png
+          
+          # Get appimagetool
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O /tmp/appimagetool
+          chmod +x /tmp/appimagetool
+          
+          # Build AppImage
+          /tmp/appimagetool dist/AutoDevOS.AppDir dist/AutoDevOS-x86_64.AppImage
+      
+      - name: Create .deb package
+        run: |
+          VERSION=$(python -c "from autodevos import __version__; print(__version__)")
+          mkdir -p dist/deb/DEBIAN
+          mkdir -p dist/deb/usr/bin
+          
+          cp dist/ados dist/deb/usr/bin/
+          
+          cat > dist/deb/DEBIAN/control << EOF
+          Package: autodevos
+          Version: ${VERSION}
+          Section: devel
+          Priority: optional
+          Architecture: amd64
+          Maintainer: AutoDevOS
+          Description: AI-powered coding assistant
+          EOF
+          
+          dpkg-deb --build dist/deb dist/AutoDevOS-amd64.deb
+      
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: dist/AutoDevOS-x86_64.AppImage
+      
+      - name: Upload deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb
+          path: dist/AutoDevOS-amd64.deb
+
+  create-release:
+    needs: [build-windows, build-macos-intel, build-macos-arm, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/windows-exe/ados.exe
+            artifacts/macos-intel-dmg/AutoDevOS-x86_64.dmg
+            artifacts/macos-arm-dmg/AutoDevOS-arm64.dmg
+            artifacts/linux-appimage/AutoDevOS-x86_64.AppImage
+            artifacts/linux-deb/AutoDevOS-amd64.deb
+          draft: true
+          generate_release_notes: true

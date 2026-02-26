@@ -54,7 +54,14 @@ def check_setup():
 
 
 @click.group(invoke_without_command=True)
-@click.argument("target", required=False)
+@click.option(
+    "--dir", "-d", "target",
+    help="Working directory or project path",
+)
+@click.option(
+    "--prompt", "-p", "prompt_text",
+    help="Run a single prompt and exit",
+)
 @click.option(
     "--version", "-v",
     is_flag=True,
@@ -66,24 +73,24 @@ def check_setup():
     help="Initialize a new project in current directory",
 )
 @click.pass_context
-def main(ctx, target: str | None, version: bool, init: bool):
+def main(ctx, target: str | None, prompt_text: str | None, version: bool, init: bool):
     """
     AutoDevOS - AI-powered coding assistant for your terminal.
     
     \b
     Usage:
-        ados                    Start interactive session
-        ados <directory>        Open specific directory
-        ados "prompt"           Run single prompt
-        ados config             Manage configuration
-        ados auth               Authentication & setup
+        ados                        Start interactive session
+        ados -d <directory>         Open specific directory
+        ados -p "prompt"            Run single prompt
+        ados config                 Manage configuration
+        ados auth                   Authentication & setup
     
     \b
     Examples:
-        ados                    # Interactive mode in current directory
-        ados ~/projects/myapp   # Open a specific project
-        ados "create a todo app"  # Single command
-        ados config provider anthropic  # Switch to Claude
+        ados                              # Interactive mode in current directory
+        ados -d ~/projects/myapp          # Open a specific project
+        ados -p "create a todo app"       # Single command
+        ados config provider anthropic    # Switch to Claude
     """
     if version:
         console.print(f"AutoDevOS CLI v{__version__}")
@@ -105,15 +112,14 @@ def main(ctx, target: str | None, version: bool, init: bool):
     if not check_setup():
         return
     
+    # Handle single prompt mode
+    if prompt_text:
+        asyncio.run(run_agent(Path.cwd(), prompt=prompt_text))
+        return
+    
     # Determine working directory
     if target:
         target_path = Path(target).expanduser().resolve()
-        
-        # Check if target looks like a prompt (contains spaces, not a path)
-        if " " in target and not target_path.exists():
-            # It's a prompt, run in single mode
-            asyncio.run(run_agent(Path.cwd(), prompt=target))
-            return
         
         if not target_path.exists():
             console.print(f"[red]Directory not found: {target}[/red]")
