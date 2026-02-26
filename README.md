@@ -1,79 +1,202 @@
-# AI Agent
+# AutoDevOS CLI
 
-An AI agent that can execute tasks using tools and manage conversations.
+AI-powered coding assistant for your terminal — like Claude Code.
 
-## Features
+## Installation
 
-### Core Functionality
+### Quick Install (Recommended)
 
-- Interactive and single-run modes
-- Streaming text responses
-- Multi-turn conversations with tool calling
-- Configurable model settings and temperature
+```bash
+# Using pip
+pip install autodevos-cli
 
-### Built-in Tools
+# Or using pipx (isolated environment)
+pipx install autodevos-cli
+```
 
-- File operations: read, write, edit files
-- Directory operations: list directories, search with glob patterns
-- Text search: grep for pattern matching
-- Shell execution: run shell commands
-- Web access: search and fetch web content
-- Memory: store and retrieve information
-- Todo: manage task lists
+### From Source
 
-### Context Management
+```bash
+git clone https://github.com/KhalkarYash/autodevos-cli.git
+cd autodevos-cli
+pip install -e .
+```
 
-- Automatic context compression when approaching token limits
-- Tool output pruning to manage context size
-- Token usage tracking
+## Quick Start
 
-### Safety and Approval
+### 1. Setup (First Time)
 
-- Multiple approval policies: on-request, auto, never, yolo
-- Dangerous command detection and blocking
-- Path-based safety checks
-- User confirmation prompts for mutating operations
+```bash
+# Interactive setup wizard
+ados auth setup
+```
 
-### Session Management
+This will guide you through:
+- Choosing your LLM provider (OpenAI, Claude, Gemini, Ollama, etc.)
+- Setting up your API key
+- Configuring your preferred model
 
-- Save and resume sessions
-- Create checkpoints
-- Persistent session storage
+### 2. Start Coding
 
-### MCP Integration
+```bash
+# Open in current directory
+ados
 
-- Connect to Model Context Protocol servers
-- Use tools from MCP servers
-- Support for stdio and HTTP/SSE transports
+# Open a specific project
+ados ~/projects/myapp
 
-### Subagents
+# Run a single command
+ados "create a simple todo app with React"
+```
 
-- Specialized subagents for specific tasks
-- Built-in subagents: codebase investigator, code reviewer
-- Configurable subagent definitions with custom tools and limits
+## Supported Providers
 
-### Loop Detection
+| Provider | API Key | Default Model |
+|----------|---------|---------------|
+| `ollama` | Not needed | llama3.2 |
+| `openai` | Required | gpt-4o |
+| `anthropic` | Required | claude-sonnet-4-20250514 |
+| `gemini` | Required | gemini-1.5-pro |
+| `openrouter` | Required | anthropic/claude-sonnet-4-20250514 |
 
-- Detects repeating actions
-- Prevents infinite loops in agent execution
+## Commands
 
-### Hooks System
+### Main Commands
 
-- Execute scripts before/after agent runs
-- Execute scripts before/after tool calls
-- Error handling hooks
-- Custom commands and scripts
+```bash
+ados                    # Interactive session in current directory
+ados <directory>        # Open specific directory
+ados "prompt"           # Single prompt mode
+ados --init             # Initialize project config
+```
 
 ### Configuration
 
-- Configurable working directory
-- Tool allowlisting
-- Developer and user instructions
-- Shell environment policies
-- MCP server configuration
+```bash
+ados config             # Show current config
+ados config provider    # List/set provider
+ados config model       # Set model
+ados config url         # Set custom API URL
+ados config providers   # List all providers
+```
 
-### User Interface
+### Authentication
 
-- Terminal UI with formatted output
-- Command interface: /help, /config, /tools, /mcp, /stats, /save, /resume, /checkpoint, /restore
-- Real-time tool call visualization
+```bash
+ados auth               # Show auth status
+ados auth setup         # Interactive setup wizard
+ados auth set-key <provider>  # Set API key
+ados auth remove-key <provider>  # Remove API key
+```
+
+### Session Commands (Interactive Mode)
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Show available commands |
+| `/config` | Show current configuration |
+| `/tools` | List available tools |
+| `/stats` | Show session statistics |
+| `/save` | Save current session |
+| `/clear` | Clear conversation |
+| `/exit` | Exit the session |
+
+## Configuration
+
+### Global Config
+
+Located at `~/.config/autodevos/config.toml`:
+
+```toml
+[model]
+provider = "anthropic"
+name = "claude-sonnet-4-20250514"
+temperature = 1.0
+```
+
+### Project Config
+
+Create `.autodevos/config.toml` in your project:
+
+```toml
+# Project-specific AI instructions
+developer_instructions = """
+This is a Python FastAPI project.
+Follow PEP 8 style guidelines.
+Use pytest for testing.
+"""
+
+# Tool restrictions
+allowed_tools = ["read_file", "write_file", "shell", "grep"]
+
+# Approval policy
+approval = "auto"
+```
+
+## Team Setup (Dashboard Integration)
+
+For teams, admins can generate a setup token:
+
+```bash
+# Admin generates token
+ados auth generate-token
+# Output: eyJwcm92aWRlci...
+
+# Team members apply it
+ados auth setup-token eyJwcm92aWRlci...
+ados auth set-key anthropic  # Set their own API key
+```
+
+## Using with Ollama (Local)
+
+```bash
+# Start Ollama
+ollama serve
+
+# Configure AutoDevOS
+ados config provider ollama
+ados config model llama3.2
+
+# Start coding!
+ados
+```
+
+### Remote Ollama (Different Machine)
+
+```bash
+# On the machine running Ollama:
+OLLAMA_HOST=0.0.0.0 ollama serve
+
+# On your machine:
+ados config provider ollama
+ados config url http://192.168.1.100:11434/v1
+```
+
+## Features
+
+- **Multi-Provider Support**: OpenAI, Anthropic, Google, Ollama, and more
+- **Interactive Terminal UI**: Rich formatting with streaming responses
+- **Built-in Tools**: File operations, shell commands, web search, and more
+- **Context Management**: Automatic compression for long conversations
+- **Session Persistence**: Save and resume conversations
+- **Safety Controls**: Approval policies for dangerous operations
+- **MCP Integration**: Extend with Model Context Protocol servers
+- **Project Config**: Customize AI behavior per-project
+
+## Environment Variables
+
+Override config with environment variables:
+
+```bash
+export API_KEY="your-api-key"
+export BASE_URL="https://custom-api.example.com/v1"
+```
+
+## Requirements
+
+- Python 3.11+
+- For Ollama: Ollama installed and running
+
+## License
+
+MIT
