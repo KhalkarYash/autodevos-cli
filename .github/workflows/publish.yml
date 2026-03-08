@@ -7,24 +7,30 @@ on:
 jobs:
   build-and-publish:
     name: Build and publish to PyPI
-    # if: github.event.release.target_commitish == 'release'
+    if: github.event.release.target_commitish == 'release'
     runs-on: ubuntu-latest
     permissions:
       id-token: write # Required for OIDC trusted publishing
+      contents: read
 
     steps:
+      # 1. Checkout the repo
       - uses: actions/checkout@v4
 
+      # 2. Set up Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # 3. Install build tools
       - name: Install build tools
         run: pip install --upgrade build hatch
 
+      # 4. Build the package (wheel + sdist)
       - name: Build package
-        run: python -m build
+        run: python -m build --sdist --wheel
 
+      # 5. Publish to PyPI
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@v1.13.0
