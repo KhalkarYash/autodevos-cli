@@ -194,7 +194,7 @@ def auth_setup():
         "  [bold]ados[/bold]          - Start interactive session\n"
         # "  [bold]ados .[/bold]        - Open current directory\n"
         "  [bold]ados config[/bold]   - View/edit configuration",
-        "  [bold]ados --help[/bold]   - Show help information"
+        "  [bold]ados --help[/bold]   - Show help information",
         border_style="green",
     ))
 

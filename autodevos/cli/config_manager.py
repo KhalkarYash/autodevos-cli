@@ -41,7 +41,7 @@ PROVIDERS = {
     "gemini": {
         "name": "Google Gemini",
         "requires_key": True,
-        "default_model": "gemini-1.5-pro",
+        "default_model": "gemini-2.5-pro",
         "default_url": "https://generativelanguage.googleapis.com/v1beta",
     },
     "openrouter": {

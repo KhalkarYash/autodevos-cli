@@ -6,13 +6,13 @@ import click
 from dotenv import load_dotenv
 load_dotenv()
 
-from agent.agent import Agent
-from agent.events import AgentEventType
-from agent.persistence import PersistenceManager, SessionSnapshot
-from agent.session import Session
-from config.config import ApprovalPolicy, Config
-from config.loader import load_config
-from ui.tui import TUI, get_console
+from autodevos.agent.agent import Agent
+from autodevos.agent.events import AgentEventType
+from autodevos.agent.persistence import PersistenceManager, SessionSnapshot
+from autodevos.agent.session import Session
+from autodevos.config.config import ApprovalPolicy, Config
+from autodevos.config.loader import load_config
+from autodevos.ui.tui import TUI, get_console
 
 console = get_console()
 

@@ -178,11 +178,6 @@ async def run_agent(cwd: Path, prompt: str | None = None):
     # Import here to avoid circular imports and speed up CLI startup
     # These imports pull in the heavy dependencies
     
-    # Add the package root to path for imports to work
-    package_root = Path(__file__).parent.parent.parent
-    if str(package_root) not in sys.path:
-        sys.path.insert(0, str(package_root))
-    
     # Set up environment from our config
     cli_config = get_full_config()
     
@@ -191,11 +186,11 @@ async def run_agent(cwd: Path, prompt: str | None = None):
     os.environ["BASE_URL"] = cli_config["base_url"]
     
     # Now import the agent components
-    from agent.agent import Agent
-    from agent.events import AgentEventType
-    from config.config import Config, Provider, ModelConfig
-    from config.loader import load_config
-    from ui.tui import TUI, get_console
+    from autodevos.agent.agent import Agent
+    from autodevos.agent.events import AgentEventType
+    from autodevos.config.config import Config, Provider, ModelConfig
+    from autodevos.config.loader import load_config
+    from autodevos.ui.tui import TUI, get_console
     
     # Load project config
     project_config = load_config(cwd)
@@ -237,16 +232,16 @@ class CLIHandler:
         self.agent = None
     
     async def run_single(self, message: str) -> str | None:
-        from agent.agent import Agent
+        from autodevos.agent.agent import Agent
         
         async with Agent(self.config) as agent:
             self.agent = agent
             return await self._process_message(message)
     
     async def run_interactive(self) -> None:
-        from agent.agent import Agent
-        from agent.events import AgentEventType
-        from config.config import ApprovalPolicy
+        from autodevos.agent.agent import Agent
+        from autodevos.agent.events import AgentEventType
+        from autodevos.config.config import ApprovalPolicy
         
         provider_name = PROVIDERS.get(self.config.provider.value, {}).get("name", self.config.provider.value)
         
@@ -293,7 +288,7 @@ class CLIHandler:
         return tool.kind.value
     
     async def _process_message(self, message: str) -> str | None:
-        from agent.events import AgentEventType
+        from autodevos.agent.events import AgentEventType
         
         if not self.agent:
             return None
@@ -345,8 +340,8 @@ class CLIHandler:
     
     async def _handle_command(self, command: str) -> bool:
         """Handle slash commands. Returns True to continue, False to exit."""
-        from agent.persistence import PersistenceManager, SessionSnapshot
-        from config.config import ApprovalPolicy
+        from autodevos.agent.persistence import PersistenceManager, SessionSnapshot
+        from autodevos.config.config import ApprovalPolicy
         
         cmd = command.lower().strip()
         parts = cmd.split(maxsplit=1)
