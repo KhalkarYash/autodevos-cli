@@ -8,10 +8,10 @@ AI-powered coding assistant for your terminal — like Claude Code.
 
 ```bash
 # Using pip
-pip install autodevos-cli
+pip install ados
 
 # Or using pipx (isolated environment)
-pipx install autodevos-cli
+pipx install ados
 ```
 
 ### From Source
@@ -32,6 +32,7 @@ ados auth setup
 ```
 
 This will guide you through:
+
 - Choosing your LLM provider (OpenAI, Claude, Gemini, Ollama, etc.)
 - Setting up your API key
 - Configuring your preferred model
@@ -51,13 +52,13 @@ ados "create a simple todo app with React"
 
 ## Supported Providers
 
-| Provider | API Key | Default Model |
-|----------|---------|---------------|
-| `ollama` | Not needed | llama3.2 |
-| `openai` | Required | gpt-4o |
-| `anthropic` | Required | claude-sonnet-4-20250514 |
-| `gemini` | Required | gemini-1.5-pro |
-| `openrouter` | Required | anthropic/claude-sonnet-4-20250514 |
+| Provider     | API Key    | Default Model                      |
+| ------------ | ---------- | ---------------------------------- |
+| `ollama`     | Not needed | llama3.2                           |
+| `openai`     | Required   | gpt-4o                             |
+| `anthropic`  | Required   | claude-sonnet-4-20250514           |
+| `gemini`     | Required   | gemini-1.5-pro                     |
+| `openrouter` | Required   | anthropic/claude-sonnet-4-20250514 |
 
 ## Commands
 
@@ -91,15 +92,15 @@ ados auth remove-key <provider>  # Remove API key
 
 ### Session Commands (Interactive Mode)
 
-| Command | Description |
-|---------|-------------|
-| `/help` | Show available commands |
+| Command   | Description                |
+| --------- | -------------------------- |
+| `/help`   | Show available commands    |
 | `/config` | Show current configuration |
-| `/tools` | List available tools |
-| `/stats` | Show session statistics |
-| `/save` | Save current session |
-| `/clear` | Clear conversation |
-| `/exit` | Exit the session |
+| `/tools`  | List available tools       |
+| `/stats`  | Show session statistics    |
+| `/save`   | Save current session       |
+| `/clear`  | Clear conversation         |
+| `/exit`   | Exit the session           |
 
 ## Configuration
 
