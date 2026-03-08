@@ -192,8 +192,9 @@ def auth_setup():
         "[bold green]Setup Complete![/bold green]\n\n"
         "You can now use AutoDevOS:\n"
         "  [bold]ados[/bold]          - Start interactive session\n"
-        "  [bold]ados .[/bold]        - Open current directory\n"
+        # "  [bold]ados .[/bold]        - Open current directory\n"
         "  [bold]ados config[/bold]   - View/edit configuration",
+        "  [bold]ados --help[/bold]   - Show help information"
         border_style="green",
     ))
 
