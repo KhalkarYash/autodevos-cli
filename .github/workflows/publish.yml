@@ -7,7 +7,7 @@ on:
 jobs:
   build-and-publish:
     name: Build and publish to PyPI
-    if: github.event.release.target_commitish == 'release'
+    # if: github.event.release.target_commitish == 'release'
     runs-on: ubuntu-latest
     permissions:
       id-token: write # Required for OIDC trusted publishing
@@ -27,4 +27,4 @@ jobs:
         run: python -m build
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@v1.13.0
