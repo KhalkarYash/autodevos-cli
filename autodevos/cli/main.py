@@ -345,14 +345,14 @@ class CLIHandler:
     
     async def _handle_command(self, command: str) -> bool:
         """Handle slash commands. Returns True to continue, False to exit."""
-        from agent.persistence import PersistenceManager, SessionSnapshot
-        from config.config import ApprovalPolicy
-        
-        cmd = command.lower().strip()
-        parts = cmd.split(maxsplit=1)
-        cmd_name = parts[0]
-        cmd_args = parts[1] if len(parts) > 1 else ""
-        
+        from autodevos.agent.persistence import PersistenceManager, SessionSnapshot
+        from autodevos.config.config import ApprovalPolicy
+
+        # Preserve original casing for args (model names, etc.) but lowercase cmd
+        parts = command.strip().split(maxsplit=1)
+        cmd_name = parts[0].lower()
+        cmd_args = parts[1].strip() if len(parts) > 1 else ""
+
         if cmd_name in ("/exit", "/quit"):
             return False
         elif cmd_name == "/help":
@@ -368,11 +368,42 @@ class CLIHandler:
             self.console.print(f"  Temperature: {self.config.temperature}")
             self.console.print(f"  Approval: {self.config.approval.value}")
             self.console.print(f"  Working Dir: {self.config.cwd}")
+        elif cmd_name == "/model":
+            if not cmd_args:
+                self.console.print(f"[bold]Current model:[/bold] {self.config.model_name}")
+                self.console.print("[dim]Usage: /model <name>  e.g. /model gpt-4o[/dim]")
+            else:
+                self.config.model.name = cmd_args
+                self.agent.session.llm_client._provider = None  # force provider recreate
+                self.console.print(f"[success]Model changed to:[/success] {cmd_args}")
+        elif cmd_name == "/approval":
+            valid = [p.value for p in ApprovalPolicy]
+            if not cmd_args:
+                self.console.print(f"[bold]Current approval mode:[/bold] {self.config.approval.value}")
+                self.console.print(f"[dim]Usage: /approval <mode>  options: {', '.join(valid)}[/dim]")
+            elif cmd_args not in valid:
+                self.console.print(f"[error]Invalid mode '{cmd_args}'. Choose from: {', '.join(valid)}[/error]")
+            else:
+                self.config.approval = ApprovalPolicy(cmd_args)
+                self.console.print(f"[success]Approval mode changed to:[/success] {cmd_args}")
         elif cmd_name == "/tools":
             tools = self.agent.session.tool_registry.get_tools()
             self.console.print(f"\n[bold]Available Tools ({len(tools)})[/bold]")
             for tool in tools:
                 self.console.print(f"  • {tool.name}")
+        elif cmd_name == "/mcp":
+            mcp_manager = getattr(self.agent.session, "mcp_manager", None)
+            if mcp_manager is None:
+                self.console.print("[dim]No MCP servers configured.[/dim]")
+            else:
+                servers = mcp_manager.get_server_statuses()
+                if not servers:
+                    self.console.print("[dim]No MCP servers configured.[/dim]")
+                else:
+                    self.console.print("\n[bold]MCP Servers[/bold]")
+                    for name, status in servers.items():
+                        icon = "[green]●[/green]" if status.connected else "[red]●[/red]"
+                        self.console.print(f"  {icon} {name} — {status.status}")
         elif cmd_name == "/stats":
             stats = self.agent.session.get_stats()
             self.console.print("\n[bold]Session Statistics[/bold]")
@@ -389,10 +420,51 @@ class CLIHandler:
                 total_usage=self.agent.session.context_manager.total_usage,
             )
             persistence_manager.save_session(session_snapshot)
-            self.console.print(f"[success]Session saved: {self.agent.session.session_id}[/success]")
+            self.console.print(f"[success]Session saved:[/success] {self.agent.session.session_id}")
+        elif cmd_name == "/sessions":
+            persistence_manager = PersistenceManager()
+            sessions = persistence_manager.list_sessions()
+            if not sessions:
+                self.console.print("[dim]No saved sessions found.[/dim]")
+            else:
+                self.console.print(f"\n[bold]Saved Sessions ({len(sessions)})[/bold]")
+                for s in sessions:
+                    self.console.print(f"  • {s.session_id}  turns={s.turn_count}  {s.updated_at}")
+        elif cmd_name == "/resume":
+            if not cmd_args:
+                self.console.print("[dim]Usage: /resume <session_id>[/dim]")
+            else:
+                persistence_manager = PersistenceManager()
+                snapshot = persistence_manager.load_session(cmd_args)
+                if snapshot is None:
+                    self.console.print(f"[error]Session not found: {cmd_args}[/error]")
+                else:
+                    self.agent.session.context_manager.load_messages(snapshot.messages)
+                    self.console.print(f"[success]Resumed session:[/success] {cmd_args}  ({snapshot.turn_count} turns)")
+        elif cmd_name == "/checkpoint":
+            name = cmd_args or None
+            checkpoint_id = self.agent.session.create_checkpoint(name)
+            self.console.print(f"[success]Checkpoint created:[/success] {checkpoint_id}")
+        elif cmd_name == "/checkpoints":
+            checkpoints = self.agent.session.list_checkpoints()
+            if not checkpoints:
+                self.console.print("[dim]No checkpoints found.[/dim]")
+            else:
+                self.console.print(f"\n[bold]Checkpoints ({len(checkpoints)})[/bold]")
+                for cp in checkpoints:
+                    self.console.print(f"  • {cp['id']}  {cp.get('name', '')}  turns={cp.get('turn_count', '?')}")
+        elif cmd_name == "/restore":
+            if not cmd_args:
+                self.console.print("[dim]Usage: /restore <checkpoint_id>[/dim]")
+            else:
+                ok = self.agent.session.restore_checkpoint(cmd_args)
+                if ok:
+                    self.console.print(f"[success]Restored checkpoint:[/success] {cmd_args}")
+                else:
+                    self.console.print(f"[error]Checkpoint not found: {cmd_args}[/error]")
         else:
             self.console.print(f"[error]Unknown command: {cmd_name}[/error]")
-        
+
         return True
 
 

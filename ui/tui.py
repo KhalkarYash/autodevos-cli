@@ -15,6 +15,8 @@ from config.config import Config
 from tools.base import ToolConfirmation
 from utils.paths import display_path_rel_to_cwd
 import re
+import json
+from rich.pretty import Pretty
 
 from utils.text import truncate_text
 
@@ -120,9 +122,12 @@ class TUI:
                     line_count = len(value.splitlines()) or 0
                     byte_count = len(value.encode("utf-8", errors="replace"))
                     value = f"<{line_count} lines • {byte_count} bytes>"
-
-            if isinstance(value, bool):
-                value = str(value)
+            
+            else:
+                try:
+                    value = Pretty(value)
+                except Exception:
+                    value = json.dumps(value, indent=2, default=str)
 
             table.add_row(key, value)
 
@@ -276,7 +281,14 @@ class TUI:
 
         if name == "read_file" and success:
             if primary_path:
-                start_line, code = self._extract_read_file_code(output)
+                # start_line, code = self._extract_read_file_code(output)
+                parsed = self._extract_read_file_code(output)
+
+                if parsed:
+                    start_line, code = parsed
+                else:
+                    start_line = 1
+                    code = output
 
                 shown_start = metadata.get("shown_start")
                 shown_end = metadata.get("shown_end")
