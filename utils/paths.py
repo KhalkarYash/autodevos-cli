@@ -1,12 +1,31 @@
 from pathlib import Path
 
 
-def resolve_path(base: str | Path, path: str | Path):
-    path = Path(path)
-    if path.is_absolute():
-        return path.resolve()
+def is_path_within_base(path: str | Path, base: str | Path) -> bool:
+    try:
+        Path(path).resolve().relative_to(Path(base).resolve())
+        return True
+    except ValueError:
+        return False
 
-    return Path(base).resolve() / path
+
+def resolve_path(
+    base: str | Path,
+    path: str | Path,
+    *,
+    enforce_within_base: bool = True,
+) -> Path:
+    base_path = Path(base).resolve()
+    input_path = Path(path).expanduser()
+    if input_path.is_absolute():
+        resolved = input_path.resolve()
+    else:
+        resolved = (base_path / input_path).resolve()
+
+    if enforce_within_base and not is_path_within_base(resolved, base_path):
+        raise ValueError(f"Path escapes workspace: {path}")
+
+    return resolved
 
 
 def display_path_rel_to_cwd(path: str, cwd: Path | None) -> str:

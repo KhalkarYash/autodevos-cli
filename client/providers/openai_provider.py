@@ -89,8 +89,9 @@ class OpenAIProvider(BaseProvider):
                     async for event in self._stream_response(client, kwargs):
                         yield event
                 else:
-                    event = await self._non_stream_response(client, kwargs)
-                    yield event
+                    events = await self._non_stream_response(client, kwargs)
+                    for event in events:
+                        yield event
                 return
             except RateLimitError as e:
                 if attempt < self._max_retries:
@@ -215,7 +216,7 @@ class OpenAIProvider(BaseProvider):
         self,
         client: AsyncOpenAI,
         kwargs: dict[str, Any],
-    ) -> StreamEvent:
+    ) -> list[StreamEvent]:
         response = await client.chat.completions.create(**kwargs)
         choice = response.choices[0]
         message = choice.message
@@ -249,9 +250,16 @@ class OpenAIProvider(BaseProvider):
                 or 0,
             )
 
-        return StreamEvent(
-            type=StreamEventType.MESSAGE_COMPLETE,
-            text_delta=text_delta,
-            finish_reason=choice.finish_reason,
-            usage=usage,
+        events = [
+            StreamEvent(type=StreamEventType.TOOL_CALL_COMPLETE, tool_call=tc)
+            for tc in tool_calls_list
+        ]
+        events.append(
+            StreamEvent(
+                type=StreamEventType.MESSAGE_COMPLETE,
+                text_delta=text_delta,
+                finish_reason=choice.finish_reason,
+                usage=usage,
+            )
         )
+        return events

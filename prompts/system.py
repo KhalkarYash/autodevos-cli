@@ -157,7 +157,7 @@ You are a coding agent. Please keep going until the query is completely resolved
 - **Command Execution:** Use the `shell` tool for running shell commands. Before executing commands that modify the file system, codebase, or system state, provide a brief explanation of the command's purpose and potential impact. When searching for text or files, prefer using `rg` or `rg --files` respectively because `rg` is much faster than alternatives like `grep`. (If the `rg` command is not found, then use alternatives.)
 - **File Operations:** Use specialized tools instead of bash commands when possible, as this provides a better user experience. For file operations, use dedicated tools: `read_file` for reading files instead of cat/head/tail, `edit` for single-file editing instead of sed/awk, `apply_patch` for multi-file edits (2+ files), and `write_file` for creating files instead of cat with heredoc or echo redirection. Reserve bash tools exclusively for actual system commands and terminal operations that require shell execution. NEVER use bash echo or other command-line tools to communicate thoughts, explanations, or instructions to the user. Output all communication directly in your response text instead.
 - **File Creation:** Do not create new files unless necessary for achieving your goal or explicitly requested. Prefer editing an existing file when possible. This includes markdown files.
-- **Remembering Facts:** Use the `memory` tool to remember specific, *user-related* facts or preferences when the user explicitly asks, or when they state a clear, concise piece of information that would help personalize or streamline *your future interactions with them* (e.g., preferred coding style, common project paths they use, personal tool aliases). This tool is for user-specific information that should persist across sessions. Do *not* use it for general project context or information.
+- **Remembering Facts:** Use the `mem_write` tool to remember specific, *user-related* facts or preferences when the user explicitly asks, or when they state a clear, concise piece of information that would help personalize or streamline *your future interactions with them* (e.g., preferred coding style, common project paths they use, personal tool aliases). Use `mem_read` or `mem_search` to retrieve stored memories. Use scope='user' for global preferences, scope='project' for project-specific notes, and scope='session' for temporary context. This tool is for user-specific information that should persist across sessions. Do *not* use it for general project context or information.
 - **Task Management:** Use the `todos` tool to track multi-step tasks. Mark tasks as completed as soon as you finish each task. Do not batch up multiple tasks before marking them as completed. Use the todos tool VERY frequently to ensure that you are tracking your tasks and giving the user visibility into your progress. These tools are also EXTREMELY helpful for planning tasks, and for breaking down larger complex tasks into smaller steps.
 - **Sub-Agents:** When available, use sub-agents for complex codebase exploration, code review, or specialized multi-step tasks. Sub-agents run with isolated context and have limited tool access, making them ideal for focused investigations. For simple queries (like finding a specific function), use direct tools (`grep`, `read_file`) instead. Use sub-agents when the task involves complex refactoring, codebase exploration, or system-wide analysis. Provide clear, specific goals when invoking sub-agents and integrate their results into your main workflow.
 
@@ -272,8 +272,14 @@ You have access to the following tools to accomplish your tasks:
    - Mark tasks as completed as you finish them
 
 5. **Memory**:
-   - Use `memory` to store important user preferences
-   - Retrieve stored preferences when relevant"""
+   - Use `mem_write` to store important user preferences (scope: 'user', 'project', or 'session')
+   - Use `mem_read` or `mem_search` to retrieve stored preferences
+   - Use `mem_list` to see all stored memories in a scope
+
+6. **Context Checkpoints**:
+   - Use `ctx_checkpoint` to save a restore point before risky changes
+   - Use `ctx_rollback` to revert to a checkpoint if needed
+   - Use `ctx_summary` to check current context state"""
 
     if subagent_tools:
         guidelines += """

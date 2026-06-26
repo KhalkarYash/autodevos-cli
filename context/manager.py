@@ -72,7 +72,7 @@ class ContextManager:
     def add_assistant_message(
         self,
         content: str,
-        tool_calls: list[dict[str, any]] | None = None,
+        tool_calls: list[dict[str, Any]] | None = None,
     ) -> None:
         item = MessageItem(
             role="assistant",
@@ -88,11 +88,16 @@ class ContextManager:
 
     def add_tool_result(self, tool_call_id: str, content: str) -> None:
         safe_content = content or ""
+        wrapped_content = (
+            '<tool_output trusted="false">\n'
+            f"{safe_content}\n"
+            "</tool_output>"
+        )
         item = MessageItem(
             role="tool",
-            content=safe_content,
+            content=wrapped_content,
             tool_call_id=tool_call_id,
-            token_count=count_tokens(safe_content, self._model_name),
+            token_count=count_tokens(wrapped_content, self._model_name),
         )
 
         self._messages.append(item)
@@ -116,6 +121,12 @@ class ContextManager:
     def needs_compression(self) -> bool:
         context_limit = self.config.model.context_window
         current_tokens = self._latest_usage.total_tokens
+        if current_tokens <= 0:
+            current_tokens = count_tokens(self._system_prompt, self._model_name)
+            current_tokens += sum(
+                msg.token_count or count_tokens(msg.content, self._model_name)
+                for msg in self._messages
+            )
 
         return current_tokens > (context_limit * 0.8)
 
@@ -188,7 +199,7 @@ I'll continue with the REMAINING tasks only, starting from where we left off."""
         for msg in reversed(self._messages):
             if msg.role == "tool" and msg.tool_call_id:
                 if msg.pruned_at:
-                    break
+                    continue
 
                 tokens = msg.token_count or count_tokens(msg.content, self._model_name)
                 total_tokens += tokens
@@ -212,3 +223,22 @@ I'll continue with the REMAINING tasks only, starting from where we left off."""
 
     def clear(self) -> None:
         self._messages = []
+
+    def load_messages(self, messages: list[dict[str, Any]]) -> None:
+        self._messages = []
+
+        for msg in messages:
+            role = msg.get("role")
+            if role == "system":
+                continue
+
+            content = msg.get("content", "") or ""
+            tool_calls = msg.get("tool_calls") or []
+            item = MessageItem(
+                role=role,
+                content=content,
+                tool_call_id=msg.get("tool_call_id"),
+                tool_calls=tool_calls,
+                token_count=count_tokens(content, self._model_name),
+            )
+            self._messages.append(item)

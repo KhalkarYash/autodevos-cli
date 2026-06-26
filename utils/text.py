@@ -1,13 +1,17 @@
 import tiktoken
 
+_TOKENIZER_CACHE = {}
+
 
 def get_tokenizer(model: str):
-    try:
-        encoding = tiktoken.encoding_for_model(model)
-        return encoding.encode
-    except Exception:
-        encoding = tiktoken.get_encoding("cl100k_base")
-        return encoding.encode
+    if model not in _TOKENIZER_CACHE:
+        try:
+            encoding = tiktoken.encoding_for_model(model)
+        except Exception:
+            encoding = tiktoken.get_encoding("cl100k_base")
+        _TOKENIZER_CACHE[model] = encoding.encode
+
+    return _TOKENIZER_CACHE[model]
 
 
 def count_tokens(text: str, model: str = "gpt-4") -> int:

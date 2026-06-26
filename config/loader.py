@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Any
 
@@ -11,14 +12,22 @@ import logging
 logger = logging.getLogger(__name__)
 CONFIG_FILE_NAME = "config.toml"
 
-AGENT_MD_FILE = "AGENT.MD"
+AGENT_MD_FILE = "AGENTS.md"
 
 
 def get_config_dir() -> Path:
+    """Config directory. Override with AUTODEVOS_CONFIG_DIR for containers/tests."""
+    override = os.environ.get("AUTODEVOS_CONFIG_DIR")
+    if override:
+        return Path(override).expanduser()
     return Path(user_config_dir("ai-agent"))
 
 
 def get_data_dir() -> Path:
+    """Data directory. Override with AUTODEVOS_DATA_DIR for containers/tests."""
+    override = os.environ.get("AUTODEVOS_DATA_DIR")
+    if override:
+        return Path(override).expanduser()
     return Path(user_data_dir("ai-agent"))
 
 
@@ -31,10 +40,10 @@ def _parse_toml(path: Path):
         with open(path, "rb") as f:
             return tomli.load(f)
     except tomli.TOMLDecodeError as e:
-        raise ConfigError("Invalid TOML in {path}: {e}", config_file=str(path)) from e
+        raise ConfigError(f"Invalid TOML in {path}: {e}", config_file=str(path)) from e
     except (OSError, IOError) as e:
         raise ConfigError(
-            "Failed to read config file {path}: {e}", config_file=str(path)
+            f"Failed to read config file {path}: {e}", config_file=str(path)
         ) from e
 
 
@@ -50,16 +59,24 @@ def _get_project_config(cwd: Path) -> Path | None:
     return None
 
 
-def _get_agent_md_files(cwd: Path) -> Path | None:
+def _get_agent_md_files(cwd: Path) -> str | None:
     current = cwd.resolve()
+    files: list[Path] = []
 
-    if current.is_dir():
-        agent_md_file = current / AGENT_MD_FILE
+    for directory in [current, *current.parents]:
+        agent_md_file = directory / AGENT_MD_FILE
         if agent_md_file.is_file():
-            content = agent_md_file.read_text(encoding="utf-8")
-            return content
+            files.append(agent_md_file)
 
-    return None
+    if not files:
+        return None
+
+    sections = []
+    for file_path in reversed(files):
+        content = file_path.read_text(encoding="utf-8")
+        sections.append(f"# {file_path}\n\n{content}")
+
+    return "\n\n".join(sections)
 
 
 def _merge_dicts(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:

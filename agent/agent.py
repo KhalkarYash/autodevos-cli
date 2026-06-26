@@ -1,11 +1,18 @@
 from __future__ import annotations
+import asyncio
 from typing import AsyncGenerator, Awaitable, Callable
 from agent.events import AgentEvent, AgentEventType
 from agent.session import Session
-from client.response import StreamEventType, TokenUsage, ToolCall, ToolResultMessage
+from client.response import (
+    StreamEventType,
+    TokenUsage,
+    ToolCall,
+    ToolResultMessage,
+    serialize_tool_call_arguments,
+)
 from config.config import Config
 from prompts.system import create_loop_breaker_prompt
-from tools.base import ToolConfirmation
+from tools.base import ToolConfirmation, ToolResult
 
 
 class Agent:
@@ -19,6 +26,12 @@ class Agent:
         self.session.approval_manager.confirmation_callback = confirmation_callback
 
     async def run(self, message: str):
+        if self.session is None:
+            self.session = Session(self.config)
+
+        if self.session.context_manager is None:
+            await self.session.initialize()
+
         await self.session.hook_system.trigger_before_agent(message)
         yield AgentEvent.agent_start(message)
         self.session.context_manager.add_user_message(message)
@@ -33,6 +46,47 @@ class Agent:
 
         await self.session.hook_system.trigger_after_agent(message, final_response)
         yield AgentEvent.agent_end(final_response)
+
+    async def _execute_tool_call(self, tool_call: ToolCall) -> ToolResult:
+        return await self.session.tool_registry.invoke(
+            tool_call.name,
+            tool_call.arguments,
+            self.config.cwd,
+            self.session.hook_system,
+            self.session.approval_manager,
+        )
+
+    async def _execute_tool_calls(
+        self,
+        tool_calls: list[ToolCall],
+    ) -> list[tuple[ToolCall, ToolResult]]:
+        executed: list[tuple[ToolCall, ToolResult]] = []
+        read_only_batch: list[ToolCall] = []
+
+        async def flush_read_only_batch() -> None:
+            nonlocal read_only_batch
+            if not read_only_batch:
+                return
+
+            results = await asyncio.gather(
+                *(self._execute_tool_call(tool_call) for tool_call in read_only_batch)
+            )
+            executed.extend(zip(read_only_batch, results))
+            read_only_batch = []
+
+        for tool_call in tool_calls:
+            tool = self.session.tool_registry.get(tool_call.name)
+            if tool and not tool.is_mutating(tool_call.arguments):
+                read_only_batch.append(tool_call)
+                continue
+
+            await flush_read_only_batch()
+            result = await self._execute_tool_call(tool_call)
+            executed.append((tool_call, result))
+
+        await flush_read_only_batch()
+
+        return executed
 
     async def _agentic_loop(self) -> AsyncGenerator[AgentEvent, None]:
         max_turns = self.config.max_turns
@@ -85,7 +139,9 @@ class Agent:
                             "type": "function",
                             "function": {
                                 "name": tc.name,
-                                "arguments": str(tc.arguments),
+                                "arguments": serialize_tool_call_arguments(
+                                    tc.arguments
+                                ),
                             },
                         }
                         for tc in tool_calls
@@ -124,14 +180,9 @@ class Agent:
                     args=tool_call.arguments,
                 )
 
-                result = await self.session.tool_registry.invoke(
-                    tool_call.name,
-                    tool_call.arguments,
-                    self.config.cwd,
-                    self.session.hook_system,
-                    self.session.approval_manager,
-                )
+            executed_tool_calls = await self._execute_tool_calls(tool_calls)
 
+            for tool_call, result in executed_tool_calls:
                 yield AgentEvent.tool_call_complete(
                     tool_call.call_id,
                     tool_call.name,

@@ -1,18 +1,20 @@
+import logging
 from datetime import datetime
-import json
 from typing import Any
 import uuid
 from client.llm_client import LLMClient
 from config.config import Config
-from config.loader import get_data_dir
 from context.compaction import ChatCompactor
 from context.loop_detector import LoopDetector
 from context.manager import ContextManager
 from hooks.hook_system import HookSystem
 from safety.approval import ApprovalManager
+from agent.persistence import PersistenceManager, SessionSnapshot
 from tools.discovery import ToolDiscoveryManager
 from tools.mcp.mcp_manager import MCPManager
 from tools.registry import create_default_registry
+
+logger = logging.getLogger(__name__)
 
 
 class Session:
@@ -40,6 +42,9 @@ class Session:
         self.turn_count = 0
 
     async def initialize(self) -> None:
+        if self.context_manager is not None:
+            return
+
         await self.mcp_manager.initialize()
         self.mcp_manager.register_tools(self.tool_registry)
 
@@ -50,27 +55,37 @@ class Session:
             tools=self.tool_registry.get_tools(),
         )
 
-    def _load_memory(self) -> str | None:
-        data_dir = get_data_dir()
-        data_dir.mkdir(parents=True, exist_ok=True)
-        path = data_dir / "user_memory.json"
+        # Bind the Context MCP Server to the live ContextManager
+        context_store = self.mcp_manager.get_context_store()
+        if context_store:
+            context_store.bind_context_manager(self.context_manager)
+            logger.debug("Context MCP server bound to ContextManager")
 
-        if not path.exists():
+    def _load_memory(self) -> str | None:
+        """Load user memory from the Memory MCP Server store.
+
+        Reads directly from the MemoryStore (which backs the MCP server)
+        rather than reading the legacy JSON file. The MemoryStore handles
+        migration from user_memory.json on first access.
+        """
+        memory_store = self.mcp_manager.get_memory_store()
+        if memory_store is None:
+            logger.debug("Memory MCP server not available; no user memory loaded")
             return None
 
         try:
-            content = path.read_text(encoding="utf-8")
-            data = json.loads(content)
-            entries = data.get("entries")
-            if not entries:
-                return None
+            user_mem = memory_store.get_all_formatted("user")
+            project_mem = memory_store.get_all_formatted("project")
 
-            lines = ["User preferences and notes:"]
-            for key, value in entries.items():
-                lines.append(f"- {key}: {value}")
+            parts = []
+            if user_mem and "No user memories" not in user_mem:
+                parts.append(user_mem)
+            if project_mem and "No project memories" not in project_mem:
+                parts.append(project_mem)
 
-            return "\n".join(lines)
+            return "\n\n".join(parts) if parts else None
         except Exception:
+            logger.debug("Failed to load memory from MCP server", exc_info=True)
             return None
 
     def increment_turn(self) -> int:
@@ -84,8 +99,52 @@ class Session:
             "session_id": self.session_id,
             "created_at": self.created_at.isoformat(),
             "turn_count": self.turn_count,
-            "message_count": self.context_manager.message_count,
-            "token_usage": self.context_manager.total_usage,
+            "message_count": self.context_manager.message_count
+            if self.context_manager
+            else 0,
+            "token_usage": self.context_manager.total_usage
+            if self.context_manager
+            else None,
             "tools_count": len(self.tool_registry.get_tools()),
             "mcp_servers": len(self.tool_registry.connected_mcp_servers),
         }
+
+    def snapshot(self) -> SessionSnapshot:
+        if self.context_manager is None:
+            raise RuntimeError("Session is not initialized")
+
+        return SessionSnapshot(
+            session_id=self.session_id,
+            created_at=self.created_at,
+            updated_at=self.updated_at,
+            turn_count=self.turn_count,
+            messages=self.context_manager.get_messages(),
+            total_usage=self.context_manager.total_usage,
+        )
+
+    def load_snapshot(self, snapshot: SessionSnapshot) -> None:
+        if self.context_manager is None:
+            raise RuntimeError("Session is not initialized")
+
+        self.session_id = snapshot.session_id
+        self.created_at = snapshot.created_at
+        self.updated_at = snapshot.updated_at
+        self.turn_count = snapshot.turn_count
+        self.context_manager.total_usage = snapshot.total_usage
+        self.context_manager.load_messages(snapshot.messages)
+
+    def save_session(self) -> None:
+        PersistenceManager().save_session(self.snapshot())
+
+    def create_checkpoint(self, name: str | None = None) -> str:
+        return PersistenceManager().save_checkpoint(self.snapshot())
+
+    def list_checkpoints(self) -> list[dict[str, Any]]:
+        return PersistenceManager().list_checkpoints()
+
+    def restore_checkpoint(self, checkpoint_id: str) -> bool:
+        snapshot = PersistenceManager().load_checkpoint(checkpoint_id)
+        if not snapshot:
+            return False
+        self.load_snapshot(snapshot)
+        return True

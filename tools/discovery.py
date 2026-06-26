@@ -3,10 +3,14 @@ import inspect
 from pathlib import Path
 import sys
 from typing import Any
+import hashlib
+import logging
 from config.config import Config
 from config.loader import get_config_dir
 from tools.base import Tool
 from tools.registry import ToolRegistry
+
+logger = logging.getLogger(__name__)
 
 
 class ToolDiscoveryManager:
@@ -15,17 +19,22 @@ class ToolDiscoveryManager:
         self.registry = registry
 
     def _load_tool_modules(self, file_path: Path) -> Any:
-        module_name = f"discovered_tool_{file_path.stem}"
+        digest = hashlib.sha256(str(file_path.resolve()).encode()).hexdigest()[:12]
+        module_name = f"discovered_tool_{file_path.stem}_{digest}"
         spec = importlib.util.spec_from_file_location(module_name, file_path)
 
         if spec is None or spec.loader is None:
-            return ImportError(f"Could not load spec from {file_path}")
+            raise ImportError(f"Could not load spec from {file_path}")
 
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
 
-        spec.loader.exec_module(module)
-        return module
+        try:
+            spec.loader.exec_module(module)
+            return module
+        except Exception:
+            sys.modules.pop(module_name, None)
+            raise
 
     def _find_tool_classes(self, module: Any) -> list[Tool]:
         tools: list[Tool] = []
@@ -63,7 +72,7 @@ class ToolDiscoveryManager:
                     tool = tool_class(self.config)
                     self.registry.register(tool)
             except Exception:
-                continue
+                logger.exception(f"Failed to discover tool from {py_file}")
 
     def discover_all(self) -> None:
         self.discover_from_directory(self.config.cwd)

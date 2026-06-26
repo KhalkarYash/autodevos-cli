@@ -63,6 +63,11 @@ Issues = "https://github.com/KhalkarYash/autodevos-cli/issues"
 ados = "autodevos.cli.main:main"
 autodev = "autodevos.cli.main:main"
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
 [tool.hatch.build.targets.wheel]
 packages = [
     "autodevos",

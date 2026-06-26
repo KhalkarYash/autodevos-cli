@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
+import ast
 import json
 
 
@@ -49,8 +50,11 @@ class ToolCallDelta:
 @dataclass
 class ToolCall:
     call_id: str
-    name: str | None = None
-    arguments: str = ""
+    name: str = ""
+    arguments: dict[str, Any] = None
+
+    def __post_init__(self) -> None:
+        self.arguments = parse_tool_call_arguments(self.arguments)
 
 
 @dataclass
@@ -78,11 +82,31 @@ class ToolResultMessage:
         }
 
 
-def parse_tool_call_arguments(arguments_str: str) -> dict[str, Any]:
-    if not arguments_str:
+def parse_tool_call_arguments(arguments: Any) -> dict[str, Any]:
+    if not arguments:
         return {}
 
+    if isinstance(arguments, dict):
+        return arguments
+
+    if not isinstance(arguments, str):
+        return {"raw_arguments": arguments}
+
     try:
-        return json.loads(arguments_str)
+        parsed = json.loads(arguments)
+        if isinstance(parsed, dict):
+            return parsed
+        return {"raw_arguments": parsed}
     except json.JSONDecodeError:
-        return {"raw_arguments": arguments_str}
+        try:
+            parsed = ast.literal_eval(arguments)
+            if isinstance(parsed, dict):
+                return parsed
+        except (SyntaxError, ValueError):
+            pass
+        return {"raw_arguments": arguments}
+
+
+def serialize_tool_call_arguments(arguments: Any) -> str:
+    parsed = parse_tool_call_arguments(arguments)
+    return json.dumps(parsed, separators=(",", ":"), ensure_ascii=False)

@@ -25,32 +25,35 @@ class ApprovalContext:
 
 
 DANGEROUS_PATTERNS = [
-    # File system destruction
-    r"rm\s+(-rf?|--recursive)\s+[/~]",
-    r"rm\s+-rf?\s+\*",
-    r"rmdir\s+[/~]",
+    # File system destruction — recursive rm targeting root or home directly.
+    # Tolerates flag obfuscation (-rf, -fr, -r -f), extra whitespace, and leading
+    # flags, while NOT matching recursive deletes of ordinary subpaths.
+    r"\brm\b(?:\s+-\S+)*\s+-\S*r\S*(?:\s+-\S+)*\s+(?:/|~|/\*|~/?|\$HOME/?)(?:\s|$)",
+    r"--no-preserve-root",
+    r"\brmdir\s+(?:/|~)(?:\s|$)",
     # Disk operations
-    r"dd\s+if=",
-    r"mkfs",
-    r"fdisk",
-    r"parted",
+    r"\bdd\s+.*if=",
+    r"\bmkfs",
+    r"\bfdisk\b",
+    r"\bparted\b",
+    r">\s*/dev/(?:sd|hd|nvme|disk)",
     # System control
-    r"shutdown",
-    r"reboot",
-    r"halt",
-    r"poweroff",
-    r"init\s+[06]",
-    # Permission changes on root
-    r"chmod\s+(-R\s+)?777\s+[/~]",
-    r"chown\s+-R\s+.*\s+[/~]",
+    r"\bshutdown\b",
+    r"\breboot\b",
+    r"\bhalt\b",
+    r"\bpoweroff\b",
+    r"\binit\s+[06]\b",
+    # Permission changes on root/home
+    r"\bchmod\s+(?:-\S+\s+)*777\s+(?:/|~)(?:\s|$)",
+    r"\bchmod\s+-R\s+777\b",
+    r"\bchown\s+-R\s+\S+\s+(?:/|~)(?:\s|$)",
     # Network exposure
-    r"nc\s+-l",
-    r"netcat\s+-l",
+    r"\bnc\s+-l",
+    r"\bnetcat\s+-l",
     # Code execution from network
-    r"curl\s+.*\|\s*(bash|sh)",
-    r"wget\s+.*\|\s*(bash|sh)",
-    # Fork bomb
-    r":\(\)\s*\{\s*:\|:&\s*\}\s*;",
+    r"\b(?:curl|wget)\b.*\|\s*(?:bash|sh|zsh|python\d?)\b",
+    # Fork bomb (tolerant of spacing)
+    r":\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:",
 ]
 
 # Patterns for safe commands (can be auto-approved)
@@ -73,9 +76,19 @@ SAFE_PATTERNS = [
 ]
 
 
+def _normalize_command(command: str) -> str:
+    """Collapse runs of whitespace (incl. tabs/newlines) to single spaces.
+
+    Defeats obfuscation like ``rm   -rf  /`` or tab/newline separators that
+    would otherwise slip past naive matching.
+    """
+    return re.sub(r"\s+", " ", command).strip()
+
+
 def is_dangerous_command(command: str) -> bool:
+    normalized = _normalize_command(command)
     for pattern in DANGEROUS_PATTERNS:
-        if re.search(pattern, command, re.IGNORECASE):
+        if re.search(pattern, normalized, re.IGNORECASE):
             return True
 
     return False
@@ -131,9 +144,11 @@ class ApprovalManager:
             return ApprovalDecision.APPROVED
 
         if context.command:
-            decision = self._assess_command_safety(context.command)
-            if decision != ApprovalDecision.NEEDS_CONFIRMATION:
-                return decision
+            # A command's safety assessment is authoritative — including a
+            # NEEDS_CONFIRMATION verdict. Returning it here prevents an unknown
+            # command from silently falling through to APPROVED when it has no
+            # affected_paths.
+            return self._assess_command_safety(context.command)
 
         for path in context.affected_paths:
             path_decision = ApprovalDecision.NEEDS_CONFIRMATION

@@ -9,7 +9,6 @@ This is the primary command that users will run:
 """
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -186,14 +185,8 @@ async def run_agent(cwd: Path, prompt: str | None = None):
     # Set up environment from our config
     cli_config = get_full_config()
     
-    # Export to environment for the agent to pick up
-    os.environ["API_KEY"] = cli_config["api_key"]
-    os.environ["BASE_URL"] = cli_config["base_url"]
-    
     # Now import the agent components
-    from agent.agent import Agent
-    from agent.events import AgentEventType
-    from config.config import Config, Provider, ModelConfig
+    from config.config import Provider
     from config.loader import load_config
     from ui.tui import TUI, get_console
     
@@ -203,6 +196,8 @@ async def run_agent(cwd: Path, prompt: str | None = None):
     # Override with CLI config
     project_config.model.provider = Provider(cli_config["provider"])
     project_config.model.name = cli_config["model"]
+    project_config.api_key_override = cli_config["api_key"]
+    project_config.base_url_override = cli_config["base_url"]
     project_config.cwd = cwd
     
     # Validate
@@ -345,8 +340,8 @@ class CLIHandler:
     
     async def _handle_command(self, command: str) -> bool:
         """Handle slash commands. Returns True to continue, False to exit."""
-        from autodevos.agent.persistence import PersistenceManager, SessionSnapshot
-        from autodevos.config.config import ApprovalPolicy
+        from agent.persistence import PersistenceManager
+        from config.config import ApprovalPolicy
 
         # Preserve original casing for args (model names, etc.) but lowercase cmd
         parts = command.strip().split(maxsplit=1)
@@ -374,7 +369,7 @@ class CLIHandler:
                 self.console.print("[dim]Usage: /model <name>  e.g. /model gpt-4o[/dim]")
             else:
                 self.config.model.name = cmd_args
-                self.agent.session.llm_client._provider = None  # force provider recreate
+                self.agent.session.client._provider = None  # force provider recreate
                 self.console.print(f"[success]Model changed to:[/success] {cmd_args}")
         elif cmd_name == "/approval":
             valid = [p.value for p in ApprovalPolicy]
@@ -396,30 +391,27 @@ class CLIHandler:
             if mcp_manager is None:
                 self.console.print("[dim]No MCP servers configured.[/dim]")
             else:
-                servers = mcp_manager.get_server_statuses()
+                servers = mcp_manager.get_all_servers()
                 if not servers:
                     self.console.print("[dim]No MCP servers configured.[/dim]")
                 else:
                     self.console.print("\n[bold]MCP Servers[/bold]")
-                    for name, status in servers.items():
-                        icon = "[green]●[/green]" if status.connected else "[red]●[/red]"
-                        self.console.print(f"  {icon} {name} — {status.status}")
+                    for server in servers:
+                        icon = (
+                            "[green]●[/green]"
+                            if server["status"] == "connected"
+                            else "[red]●[/red]"
+                        )
+                        self.console.print(
+                            f"  {icon} {server['name']} - {server['status']} ({server['tools']} tools)"
+                        )
         elif cmd_name == "/stats":
             stats = self.agent.session.get_stats()
             self.console.print("\n[bold]Session Statistics[/bold]")
             for key, value in stats.items():
                 self.console.print(f"  {key}: {value}")
         elif cmd_name == "/save":
-            persistence_manager = PersistenceManager()
-            session_snapshot = SessionSnapshot(
-                session_id=self.agent.session.session_id,
-                created_at=self.agent.session.created_at,
-                updated_at=self.agent.session.updated_at,
-                turn_count=self.agent.session.turn_count,
-                messages=self.agent.session.context_manager.get_messages(),
-                total_usage=self.agent.session.context_manager.total_usage,
-            )
-            persistence_manager.save_session(session_snapshot)
+            self.agent.session.save_session()
             self.console.print(f"[success]Session saved:[/success] {self.agent.session.session_id}")
         elif cmd_name == "/sessions":
             persistence_manager = PersistenceManager()
@@ -429,7 +421,9 @@ class CLIHandler:
             else:
                 self.console.print(f"\n[bold]Saved Sessions ({len(sessions)})[/bold]")
                 for s in sessions:
-                    self.console.print(f"  • {s.session_id}  turns={s.turn_count}  {s.updated_at}")
+                    self.console.print(
+                        f"  • {s['session_id']}  turns={s['turn_count']}  {s['updated_at']}"
+                    )
         elif cmd_name == "/resume":
             if not cmd_args:
                 self.console.print("[dim]Usage: /resume <session_id>[/dim]")
@@ -439,7 +433,7 @@ class CLIHandler:
                 if snapshot is None:
                     self.console.print(f"[error]Session not found: {cmd_args}[/error]")
                 else:
-                    self.agent.session.context_manager.load_messages(snapshot.messages)
+                    self.agent.session.load_snapshot(snapshot)
                     self.console.print(f"[success]Resumed session:[/success] {cmd_args}  ({snapshot.turn_count} turns)")
         elif cmd_name == "/checkpoint":
             name = cmd_args or None

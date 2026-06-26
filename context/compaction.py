@@ -80,9 +80,12 @@ class ChatCompactor:
                 compression_messages,
                 stream=False,
             ):
+                if event.type == StreamEventType.TEXT_DELTA and event.text_delta:
+                    summary += event.text_delta.content
                 if event.type == StreamEventType.MESSAGE_COMPLETE:
                     usage = event.usage
-                    summary += event.text_delta.content
+                    if event.text_delta:
+                        summary += event.text_delta.content
 
             if not summary or not usage:
                 return None, None

@@ -1,3 +1,4 @@
+import asyncio
 from tools.base import Tool, ToolInvocation, ToolKind, ToolResult
 from pydantic import BaseModel, Field
 from ddgs import DDGS
@@ -23,13 +24,19 @@ class WebSearchTool(Tool):
         params = WebSearchParams(**invocation.params)
 
         try:
-            results = DDGS().text(
-                params.query,
-                region="us-en",
-                safesearch="off",
-                timelimit="y",
-                page=1,
-                backend="auto",
+            loop = asyncio.get_running_loop()
+            results = await loop.run_in_executor(
+                None,
+                lambda: list(
+                    DDGS().text(
+                        params.query,
+                        region="us-en",
+                        safesearch="off",
+                        timelimit="y",
+                        page=1,
+                        backend="auto",
+                    )
+                )[: params.max_results],
             )
         except Exception as e:
             return ToolResult.error_result(f"Search failed: {e}")

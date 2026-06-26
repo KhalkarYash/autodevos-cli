@@ -169,14 +169,18 @@ class Tool(abc.ABC):
 
             json_schema = model_json_schema(schema, mode="serialization")
 
+            parameters: dict[str, Any] = {
+                "type": "object",
+                "properties": json_schema.get("properties", {}),
+                "required": json_schema.get("required", []),
+            }
+            if "$defs" in json_schema:
+                parameters["$defs"] = json_schema["$defs"]
+
             return {
                 "name": self.name,
                 "description": self.description,
-                "parameters": {
-                    "type": "object",
-                    "properties": json_schema.get("properties", {}),
-                    "required": json_schema.get("required", []),
-                },
+                "parameters": parameters,
             }
 
         if isinstance(schema, dict):

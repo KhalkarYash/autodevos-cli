@@ -98,7 +98,7 @@ class ApprovalPolicy(str, Enum):
     ON_REQUEST = "on-request"
     ON_FAILURE = "on-failure"
     AUTO = "auto"
-    AUTO_EDIT = "auto-edut"
+    AUTO_EDIT = "auto-edit"
     NEVER = "never"
     YOLO = "yolo"
 
@@ -147,10 +147,15 @@ class Config(BaseModel):
     user_instructions: str | None = None
 
     debug: bool = False
+    api_key_override: str | None = Field(default=None, repr=False)
+    base_url_override: str | None = None
 
     @property
     def api_key(self) -> str:
         """Get API key from environment. Returns placeholder for Ollama."""
+        if self.api_key_override is not None:
+            return self.api_key_override
+
         key = os.environ.get("API_KEY", "")
         if not key and self.model.provider == Provider.OLLAMA:
             return "ollama"  # Ollama doesn't need a real key
@@ -159,6 +164,9 @@ class Config(BaseModel):
     @property
     def base_url(self) -> str:
         """Get base URL from environment or use provider default."""
+        if self.base_url_override:
+            return self.base_url_override
+
         url = os.environ.get("BASE_URL", "")
         if url:
             return url
@@ -184,8 +192,8 @@ class Config(BaseModel):
     def temperature(self) -> float:
         return self.model.temperature
 
-    @model_name.setter
-    def temperature(self, value: str) -> None:
+    @temperature.setter
+    def temperature(self, value: float) -> None:
         self.model.temperature = value
 
     def validate(self) -> list[str]:

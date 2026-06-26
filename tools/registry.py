@@ -19,7 +19,7 @@ class ToolRegistry:
 
     @property
     def connected_mcp_servers(self) -> list[Tool]:
-        return self._mcp_tools.values()
+        return list(self._mcp_tools.values())
 
     def register(self, tool: Tool) -> None:
         if tool.name in self._tools:
@@ -29,6 +29,10 @@ class ToolRegistry:
         logger.debug(f"Registered tool: {tool.name}")
 
     def register_mcp_tool(self, tool: Tool) -> None:
+        if tool.name in self._tools or tool.name in self._mcp_tools:
+            logger.warning(f"Skipping duplicate MCP tool: {tool.name}")
+            return
+
         self._mcp_tools[tool.name] = tool
         logger.debug(f"Registered MCP tool: {tool.name}")
 
@@ -101,42 +105,44 @@ class ToolRegistry:
             params=params,
             cwd=cwd,
         )
-        if approval_manager:
-            confirmation = await tool.get_confirmation(invocation)
-            if confirmation:
-                context = ApprovalContext(
-                    tool_name=name,
-                    params=params,
-                    is_mutating=tool.is_mutating(params),
-                    affected_paths=confirmation.affected_paths,
-                    command=confirmation.command,
-                    is_dangerous=confirmation.is_dangerous,
-                )
-
-                decision = await approval_manager.check_approval(context)
-                if decision == ApprovalDecision.REJECTED:
-                    result = ToolResult.error_result(
-                        "Operation rejected by safety policy"
-                    )
-                    await hook_system.trigger_after_tool(name, params, result)
-                    return result
-                elif decision == ApprovalDecision.NEEDS_CONFIRMATION:
-                    approved = approval_manager.request_confirmation(confirmation)
-
-                    if not approved:
-                        result = ToolResult.error_result("User rejected the operation")
-                        await hook_system.trigger_after_tool(name, params, result)
-                        return result
 
         try:
+            if approval_manager:
+                confirmation = await tool.get_confirmation(invocation)
+                if confirmation:
+                    context = ApprovalContext(
+                        tool_name=name,
+                        params=params,
+                        is_mutating=tool.is_mutating(params),
+                        affected_paths=confirmation.affected_paths,
+                        command=confirmation.command,
+                        is_dangerous=confirmation.is_dangerous,
+                    )
+
+                    decision = await approval_manager.check_approval(context)
+                    if decision == ApprovalDecision.REJECTED:
+                        result = ToolResult.error_result(
+                            "Operation rejected by safety policy"
+                        )
+                        await hook_system.trigger_after_tool(name, params, result)
+                        return result
+                    elif decision == ApprovalDecision.NEEDS_CONFIRMATION:
+                        approved = approval_manager.request_confirmation(confirmation)
+
+                        if not approved:
+                            result = ToolResult.error_result(
+                                "User rejected the operation"
+                            )
+                            await hook_system.trigger_after_tool(name, params, result)
+                            return result
+
             result = await tool.execute(invocation)
         except Exception as e:
             logger.exception(f"Tool {name} raised unexpected error")
             result = ToolResult.error_result(
                 f"Internal error: {str(e)}",
                 metadata={
-                    "tool_name",
-                    name,
+                    "tool_name": name,
                 },
             )
 
